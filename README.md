@@ -24,12 +24,15 @@ python -m http.server 5173
 
 poi apri <http://localhost:5173>.
 
-## Interazione
+## Animazione e interazione
 
-- **Tocco o clic**: la foto si scompone in linee (circa 3,5 s), resta così per 6 s
-  e poi si ricompone (circa 4,5 s).
-- **Dito tenuto premuto**: resta in linee; trascinando il fiore si inclina in 3D
-  e le fibre sotto il dito si agitano e si sollevano.
+Parte da sola e gira in loop, come l'ultima versione TouchDesigner (v9):
+foto ferma → si scompone in linee (6,5 s) → effetto pieno (6 s) →
+si ricompone (6,5 s) → foto ferma (4 s) → di nuovo. Un ciclo dura 23 s.
+
+- **Tocco o clic**: si scompone subito, senza aspettare il ciclo.
+- **Dito tenuto premuto**: resta in linee finché tieni; trascinando il fiore si
+  inclina in 3D e le fibre sotto il dito si agitano e si sollevano.
 - **Mouse** (dopo il primo clic): passando sopra il fiore le fibre reagiscono.
 - **Tastiera**: barra spaziatrice o Invio alternano foto e linee.
 
@@ -66,10 +69,12 @@ Si passano come secondo argomento di `createHibiscus(contenitore, { ... })`.
 |---|---|---|
 | `columns` | 800 (520 su telefono) | densità delle linee |
 | `furAmp` | 0.003 | lunghezza del "pelo" |
-| `depthAmp` | 0.05 | quanto il fiore esce in 3D |
+| `depthAmp` | 0.05 | quanto le linee si contorcono e il fiore esce in 3D |
+| `depthOctaves` / `furOctaves` | 3 / 2 | strati di noise: più strati = curve più contorte |
+| `harmonicGain` | 0.7 | forza di ogni strato rispetto al precedente |
 | `yaw` / `pitch` | 16 / 5 | rotazione automatica in gradi |
-| `decompose` / `recompose` | 3.5 / 4.5 | secondi per diventare linee e per tornare foto |
-| `linger` | 6 | secondi in linee dopo un tocco |
+| `autoplay` | true | ciclo automatico; con `false` si muove solo al tocco |
+| `hold` / `transition` / `effect` | 4 / 6.5 / 6 | secondi di foto ferma tra i cicli, di passaggio e di effetto pieno |
 | `brushRadius` | 0.12 | raggio della reazione attorno al dito |
 | `tilt` | 0.35 | inclinazione massima trascinando |
 | `trail` | 0.55 | scia: 0 nessuna, 0.9 lunga |
@@ -79,8 +84,8 @@ Si passano come secondo argomento di `createHibiscus(contenitore, { ... })`.
 ## Comandarla dal codice (anche con GSAP)
 
 ```js
-fx.set(1);   // diventa linee
-fx.set(0);   // torna foto
+fx.set(1);   // diventa linee e ci resta
+fx.set(0);   // torna foto e riprende il ciclo
 ```
 
 Per esempio con GSAP ScrollTrigger: `onEnter: () => fx.set(1), onLeaveBack: () => fx.set(0)`.

@@ -5,12 +5,15 @@
 //   1. ogni pixel della foto diventa un punto con il suo colore;
 //   2. i punti della stessa riga sono uniti in linee; i pixel scuri del fondo
 //      vengono saltati ma la riga continua sopra il vuoto (i filamenti);
-//   3. nel vertex shader due noise simplex spostano i punti: uno lento e ampio
-//      (rilievo 3D) e uno fine e veloce (il "pelo");
+//   3. nel vertex shader due noise simplex a più strati (come i Noise POP con
+//      harmon=2: ogni strato a frequenza doppia e forza 0.7) spostano i punti:
+//      uno lento e ampio (rilievo 3D che contorce le linee) e uno fine e
+//      veloce (il "pelo");
 //   4. tutto ruota piano in 3D; la foto vera sfuma sotto le linee.
-//  Il tocco fa da "timeline": toccando la foto si scompone, lasciando si
-//  ricompone. Trascinando il fiore si inclina e le fibre sotto il dito si
-//  agitano.
+//  Ciclo automatico come la v9: foto ferma → si scompone in linee → effetto
+//  pieno → si ricompone → foto ferma, in loop. Il tocco lo comanda: toccando
+//  o tenendo premuto si scompone subito (e resta in linee finché tieni),
+//  trascinando il fiore si inclina e le fibre sotto il dito si agitano.
 //
 //  Uso:  createHibiscus(elementoContenitore, { ...opzioni })
 // =============================================================================
@@ -25,16 +28,20 @@ export const DEFAULTS = {
   depthAmp: 0.05,        // rilievo 3D (la foto è larga 1 unità)
   depthPeriod: 0.30,
   depthSpeed: 0.06,
+  depthOctaves: 3,       // strati di noise del rilievo (1 + harmon=2 della v9)
   furAmp: 0.003,         // il "pelo": spostamento dei singoli punti
   furPeriod: 0.006,
   furSpeed: 0.35,
+  furOctaves: 2,         // strati di noise del pelo (il terzo sarebbe sotto il pixel)
+  harmonicGain: 0.7,     // forza di ogni strato rispetto al precedente
   yaw: 16,               // gradi di rotazione avanti-indietro a effetto pieno
   pitch: 5,
   spinSpeed: 0.4,
 
-  decompose: 3.5,        // secondi per passare da foto a linee
-  recompose: 4.5,        // secondi per tornare foto
-  linger: 6.0,           // secondi in cui resta in linee dopo aver tolto il dito
+  autoplay: true,        // ciclo automatico foto → linee → foto, come la v9
+  hold: 4.0,             // secondi di foto ferma tra un ciclo e l'altro (al primo avvio la metà)
+  transition: 6.5,       // secondi del passaggio foto → linee (e linee → foto)
+  effect: 6.0,           // secondi di effetto pieno prima di tornare foto
   brushRadius: 0.12,     // raggio dell'effetto attorno al dito
   brushFur: 0.012,       // quanto si agitano le fibre sotto il dito
   brushLift: 0.06,       // quanto le fibre si sollevano verso il dito
@@ -96,18 +103,38 @@ const VERTEX = /* glsl */ `
 uniform float uTime, uDepth, uFur, uBrush;
 uniform float uDepthAmp, uDepthPeriod, uDepthSpeed;
 uniform float uFurAmp, uFurPeriod, uFurSpeed;
+uniform float uGain;
+uniform int uDepthOct, uFurOct;
 uniform float uBrushFur, uBrushLift;
 uniform vec3 uTouch;               // xy = dito nello spazio della foto, z = raggio
 attribute vec3 color;
 varying vec3 vColor;
 ${SIMPLEX}
+
+// noise vettoriale (x, y, z indipendenti)
+vec3 noise3(vec3 q) {
+  return vec3(snoise(q), snoise(q + vec3(17.3, 9.1, 3.7)), snoise(q + vec3(-41.7, 23.5, -8.2)));
+}
+
+// più strati, come le "harmonics" del Noise POP: frequenza ×2, forza ×gain
+vec3 layered(vec3 q, int octaves) {
+  vec3 sum = vec3(0.0);
+  float amp = 1.0;
+  for (int i = 0; i < 4; i++) {
+    if (i >= octaves) break;
+    sum += amp * noise3(q);
+    q *= 2.0;
+    amp *= uGain;
+  }
+  return sum;
+}
+
 void main() {
   vec3 p = position;
 
-  // rilievo: noise lento e ampio, soprattutto in profondità
+  // rilievo: noise lento e ampio in X, Y e Z → le linee si contorcono
   vec3 q = vec3(position.xy / uDepthPeriod, uTime * uDepthSpeed);
-  vec3 dn = vec3(snoise(q), snoise(q + vec3(17.3, 9.1, 0.0)), snoise(q + vec3(-41.7, 23.5, 0.0)));
-  p += dn * vec3(0.5, 0.5, 1.0) * uDepthAmp * uDepth;
+  p += layered(q, uDepthOct) * uDepthAmp * uDepth;
 
   // il dito: le fibre vicine si agitano e si sollevano
   float d = distance(position.xy, uTouch.xy);
@@ -115,8 +142,7 @@ void main() {
 
   // pelo: noise fine, punti vicini vanno in direzioni diverse
   vec3 f = vec3(position.xy / uFurPeriod, uTime * uFurSpeed);
-  vec3 fn = vec3(snoise(f), snoise(f + vec3(5.2, 1.3, 0.0)), snoise(f + vec3(9.7, -3.1, 0.0)));
-  p += fn * (uFurAmp * uFur + uBrushFur * brush);
+  p += layered(f, uFurOct) * (uFurAmp * uFur + uBrushFur * brush);
   p.z += uBrushLift * brush;
 
   vColor = color;
@@ -238,6 +264,7 @@ export async function createHibiscus(container, options = {}) {
     uTime: { value: 0 }, uDepth: { value: 0 }, uFur: { value: 0 }, uBrush: { value: 0 }, uAlpha: { value: 0 },
     uDepthAmp: { value: cfg.depthAmp }, uDepthPeriod: { value: cfg.depthPeriod }, uDepthSpeed: { value: cfg.depthSpeed },
     uFurAmp: { value: cfg.furAmp }, uFurPeriod: { value: cfg.furPeriod }, uFurSpeed: { value: cfg.furSpeed },
+    uGain: { value: cfg.harmonicGain }, uDepthOct: { value: cfg.depthOctaves }, uFurOct: { value: cfg.furOctaves },
     uBrushFur: { value: cfg.brushFur }, uBrushLift: { value: cfg.brushLift },
     uTouch: { value: new THREE.Vector3(10, 10, cfg.brushRadius) },
   };
@@ -279,8 +306,10 @@ export async function createHibiscus(container, options = {}) {
   // ---------------------------------------------------------------------------
   //  Tocco e mouse
   // ---------------------------------------------------------------------------
+  // Il ciclo ha quattro fasi: 'hold' (foto ferma), 'up' (si scompone),
+  // 'full' (effetto pieno), 'down' (si ricompone). p va da 0 (foto) a 1 (linee).
   const state = {
-    p: 0, target: 0, pressed: false, releaseAt: -1, lingerPending: false,
+    p: 0, phase: 'hold', phaseTime: 0, firstCycle: true, pressed: false, pinned: false,
     brush: 0, hover: false,
     tilt: new THREE.Vector2(), tiltTarget: new THREE.Vector2(),
     ndc: new THREE.Vector2(),
@@ -299,9 +328,7 @@ export async function createHibiscus(container, options = {}) {
     try { canvas.setPointerCapture(e.pointerId); } catch { /* puntatore già rilasciato */ }
     setPointer(e);
     state.pressed = true;
-    state.target = 1;
-    state.releaseAt = -1;
-    state.lingerPending = false;
+    if (state.phase === 'hold' || state.phase === 'down') state.phase = 'up';   // si scompone subito
     container.dispatchEvent(new CustomEvent('hibiscus:touch'));
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -309,12 +336,12 @@ export async function createHibiscus(container, options = {}) {
     state.hover = e.pointerType === 'mouse';
     if (state.pressed) state.tiltTarget.set(state.ndc.x * cfg.tilt, -state.ndc.y * cfg.tilt * 0.7);
   });
-  // lasciando il dito: si arriva comunque all'effetto pieno, che resta per
-  // `linger` secondi, poi il fiore si ricompone
+  // lasciando il dito: l'effetto pieno dura ancora `effect` secondi, poi il
+  // fiore si ricompone e il ciclo riprende
   const release = () => {
     if (!state.pressed) return;
     state.pressed = false;
-    state.lingerPending = true;
+    state.tiltTarget.set(0, 0);
   };
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
@@ -327,9 +354,8 @@ export async function createHibiscus(container, options = {}) {
   canvas.addEventListener('keydown', (e) => {
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
-      state.target = state.target > 0.5 ? 0 : 1;
-      state.releaseAt = -1;
-      state.lingerPending = false;
+      state.phase = state.p > 0.5 ? 'down' : 'up';
+      state.phaseTime = 0;
     }
   });
 
@@ -342,21 +368,33 @@ export async function createHibiscus(container, options = {}) {
     raf = requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.1);
     const t = clock.elapsedTime;
-    const now = performance.now() / 1000;
 
-    if (!state.pressed && state.lingerPending && state.p >= 0.999) {
-      state.lingerPending = false;
-      state.releaseAt = now + cfg.linger;
+    // ciclo foto → linee → foto (avanzamento lineare: le curve smoothstep qui
+    // sotto danno la morbidezza, e al ritorno tutto avviene in ordine inverso)
+    state.phaseTime += dt;
+    const step = dt / cfg.transition;
+    switch (state.phase) {
+      case 'hold':
+        state.p = 0;
+        if (cfg.autoplay && state.phaseTime >= (state.firstCycle ? cfg.hold / 2 : cfg.hold)) {
+          state.phase = 'up';
+          state.phaseTime = 0;
+        }
+        break;
+      case 'up':
+        state.firstCycle = false;
+        state.p = Math.min(1, state.p + step);
+        if (state.p >= 1) { state.phase = 'full'; state.phaseTime = 0; }
+        break;
+      case 'full':
+        if (state.pressed || state.pinned) state.phaseTime = 0;     // resta in linee finché tieni
+        if (state.phaseTime >= cfg.effect) { state.phase = 'down'; state.phaseTime = 0; }
+        break;
+      case 'down':
+        state.p = Math.max(0, state.p - step);
+        if (state.p <= 0) { state.phase = 'hold'; state.phaseTime = 0; }
+        break;
     }
-    if (!state.pressed && state.releaseAt > 0 && now > state.releaseAt) {
-      state.target = 0;
-      state.releaseAt = -1;
-    }
-    if (state.target === 0) state.tiltTarget.set(0, 0);
-
-    // avanzamento lineare: le curve smoothstep qui sotto danno la morbidezza
-    const rate = state.target > state.p ? 1 / cfg.decompose : 1 / cfg.recompose;
-    state.p += Math.sign(state.target - state.p) * Math.min(Math.abs(state.target - state.p), rate * dt);
     const p = state.p;
 
     const linesIn = smooth(0.00, 0.30, p);
@@ -403,12 +441,17 @@ export async function createHibiscus(container, options = {}) {
     points, segments,
     /** stato interno, utile per il debug dalla console */
     get debug() {
-      return { p: state.p, target: state.target, pressed: state.pressed, brush: state.brush,
-               tilt: state.tilt.toArray(), rot: [group.rotation.x, group.rotation.y], cam: camera.position.toArray(),
+      return { p: state.p, phase: state.phase, phaseTime: state.phaseTime, pressed: state.pressed,
+               pinned: state.pinned, brush: state.brush, tilt: state.tilt.toArray(),
+               rot: [group.rotation.x, group.rotation.y], cam: camera.position.toArray(),
                touch: uniforms.uTouch.value.toArray() };
     },
-    /** 0 = foto, 1 = linee (come un tocco prolungato) */
-    set(value) { state.target = value; state.releaseAt = -1; state.lingerPending = false; },
+    /** 1 = va in linee e ci resta, 0 = torna foto e riprende il ciclo */
+    set(value) {
+      state.pinned = value >= 0.5;
+      state.phase = state.pinned ? 'up' : 'down';
+      state.phaseTime = 0;
+    },
     destroy() {
       cancelAnimationFrame(raf);
       ro.disconnect();
