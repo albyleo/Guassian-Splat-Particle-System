@@ -11,18 +11,37 @@ nel browser (Three.js / WebGL), anche su telefono.
 | `index.html` | la pagina a schermo intero |
 | `hibiscus.js` | l'effetto, riutilizzabile in qualsiasi pagina |
 | `assets/ibisco.jpg` | la foto ritagliata sul fiore |
+| `middleware.js`, `server/` | controllo accessi su Vercel e schermata password |
+| `vercel.json` | pubblicazione e protezione di tutte le richieste |
 
 ## Vederla sul computer
 
-Il doppio clic su `index.html` non basta: il browser non lascia leggere i pixel
-di una foto aperta come file locale. Serve un piccolo server. Dalla cartella del
-progetto:
+Serve Node.js 24. Dalla cartella del progetto:
 
 ```bash
-python -m http.server 5173
+npm install
+```
+
+Copia `.env.example` in `.env.local`. Imposta `SITE_PASSWORD` alla password
+desiderata e `SESSION_SECRET` a un valore casuale di almeno 32 caratteri.
+Per generare il segreto:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Avvia il sito con il controllo accessi:
+
+```bash
+npm run dev
 ```
 
 poi apri <http://localhost:5173>.
+La password viene verificata sul server e non viene inserita nel codice della
+pagina. `.env.local` è escluso da Git e dalla cartella pubblicata.
+
+Un server puramente statico (come `python -m http.server`) **non esegue il
+controllo accessi**: non usarlo per pubblicare questa versione.
 
 ## Animazione e interazione
 
@@ -38,9 +57,44 @@ si ricompone (6,5 s) → foto ferma (4 s) → di nuovo. Un ciclo dura 23 s.
 
 ## Metterla online
 
-Carica la cartella così com'è (`index.html`, `hibiscus.js`, `assets/`) su un
-hosting statico qualsiasi: Netlify (trascina la cartella su app.netlify.com/drop),
-GitHub Pages, Vercel o lo spazio del tuo sito.
+Il controllo accessi richiede **Vercel**. Nel progetto Vercel collegato a questo
+repository, configura in **Settings → Environment Variables**, per Production
+e Preview:
+
+- `SITE_PASSWORD`: la password scelta per l'accesso (la stessa di `.env.local`).
+- `SESSION_SECRET`: un segreto casuale di almeno 32 caratteri, generato con il
+  comando sopra. Non usare la password come segreto.
+
+Poi esegui un nuovo deploy. `vercel.json` imposta la build e la cartella `dist`:
+vengono pubblicati soltanto HTML, script dell'effetto e foto. Il middleware
+verifica la sessione **anche per gli URL diretti di script e immagine**.
+Senza le variabili necessarie, il sito restituisce 503 e resta chiuso.
+
+La sessione dura 12 ore, con cookie firmato `HttpOnly`, `Secure` su HTTPS e
+`SameSite=Strict`. Il pulsante **Esci** rimuove il cookie dal browser; cambiare
+password o segreto invalida tutte le sessioni. Le risposte non vengono conservate
+nella cache. Il form funziona anche senza JavaScript.
+
+**Altre copie pubbliche:** questa protezione vale soltanto per il nuovo deploy
+Vercel. Disattiva l'eventuale GitHub Pages (Settings → Pages → Unpublish site)
+e rimuovi o proteggi i vecchi deploy accessibili. Se il repository GitHub è
+pubblico, i sorgenti e la foto restano scaricabili da lì: per riservarli serve
+anche rendere privato il repository. Una password breve è indovinabile; per
+limitare tentativi ripetuti configura una regola di rate limiting sul percorso
+`/login` nel firewall Vercel.
+
+Riferimento: [Routing Middleware di Vercel](https://vercel.com/docs/routing-middleware).
+
+## Verifiche
+
+```bash
+npm test
+npm run build
+```
+
+I test verificano accesso corretto ed errato, protezione degli asset, cookie
+alterati/scaduti, uscita, cambio password, richieste cross-origin e configurazione
+mancante. `npm run dev` usa lo stesso controllo accessi della pubblicazione.
 
 ## Inserirla in una pagina esistente
 
