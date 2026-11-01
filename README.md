@@ -8,10 +8,11 @@ nel browser (Three.js / WebGL), anche su telefono.
 
 | File | Cosa contiene |
 |---|---|
-| `index.html` | la pagina a schermo intero |
+| `index.html` | rimando al login; il middleware gestisce l'accesso |
+| `access.js` | login e caricamento dell'effetto nella sola pagina aperta |
 | `hibiscus.js` | l'effetto, riutilizzabile in qualsiasi pagina |
 | `assets/ibisco.jpg` | la foto ritagliata sul fiore |
-| `middleware.js`, `server/` | controllo accessi su Vercel e schermata password |
+| `middleware.js`, `server/` | controllo accessi, schermata password e contenitore dell'effetto |
 | `vercel.json` | pubblicazione e protezione di tutte le richieste |
 
 ## Vederla sul computer
@@ -70,10 +71,19 @@ vengono pubblicati soltanto HTML, script dell'effetto e foto. Il middleware
 verifica la sessione **anche per gli URL diretti di script e immagine**.
 Senza le variabili necessarie, il sito restituisce 503 e resta chiuso.
 
-La sessione dura 12 ore, con cookie firmato `HttpOnly`, `Secure` su HTTPS e
-`SameSite=Strict`. Il pulsante **Esci** rimuove il cookie dal browser; cambiare
-password o segreto invalida tutte le sessioni. Le risposte non vengono conservate
-nella cache. Il form funziona anche senza JavaScript.
+L'accesso vale soltanto per il documento aperto. Ogni nuova scheda, riapertura
+o ricaricamento richiede nuovamente la password. Dopo la verifica, il server
+rilascia un token firmato valido per 5 minuti, usato soltanto in memoria per
+scaricare script e foto con l'header `Authorization`. Il token non viene salvato
+in cookie, localStorage, sessionStorage, cronologia o URL. Una volta caricata,
+l'animazione continua in loop senza interruzioni.
+
+La freccia di uscita elimina l'effetto e le risorse dalla pagina. Anche il ritorno
+tramite la cache avanti/indietro del browser ripresenta il login. I vecchi cookie
+non autorizzano più alcun file e vengono cancellati aprendo il login. Cambiare
+password o segreto invalida i token ancora validi; un token eventualmente copiato
+resta utilizzabile fino alla sua scadenza, al massimo 5 minuti. Le risposte non
+vengono conservate nella cache. È necessario JavaScript per accedere.
 
 **Altre copie pubbliche:** questa protezione vale soltanto per il nuovo deploy
 Vercel. Disattiva l'eventuale GitHub Pages (Settings → Pages → Unpublish site)
@@ -92,9 +102,10 @@ npm test
 npm run build
 ```
 
-I test verificano accesso corretto ed errato, protezione degli asset, cookie
-alterati/scaduti, uscita, cambio password, richieste cross-origin e configurazione
-mancante. `npm run dev` usa lo stesso controllo accessi della pubblicazione.
+I test verificano accesso corretto ed errato, protezione degli asset, token
+alterati/scaduti, rifiuto dei vecchi cookie, nuove navigazioni, cambio password,
+richieste cross-origin e configurazione mancante. `npm run dev` usa lo stesso
+controllo accessi della pubblicazione.
 
 ## Inserirla in una pagina esistente
 

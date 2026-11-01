@@ -1,3 +1,5 @@
+export const IMPORT_MAP = JSON.stringify({ imports: { three: 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js' } });
+
 export function loginPage(error = false) {
   return `<!doctype html>
 <html lang="it">
@@ -10,6 +12,7 @@ export function loginPage(error = false) {
   <style>
     :root { color-scheme: dark; --ink: #f3e9e6; --accent: #e0303a; --serif: "Baskerville", "Palatino Linotype", "Book Antiqua", Georgia, serif; }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body { margin: 0; min-height: 100svh; display: grid; place-items: center; padding: 32px 24px; background: #000; color: var(--ink); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
     main { width: min(100%, 260px); }
     .mark { display: block; width: 56px; height: 56px; color: var(--accent); margin: 0 auto 48px; }
@@ -28,10 +31,21 @@ export function loginPage(error = false) {
     button:hover svg { transform: translateX(4px); }
     button:focus-visible { outline: 1px solid var(--ink); outline-offset: 6px; }
     @media (prefers-reduced-motion: reduce) { input, button, button::after, button svg { transition: none; } }
+    #experience, #stage { position: fixed; inset: 0; background: #000; }
+    #stage canvas { display: block; width: 100%; height: 100%; cursor: pointer; outline: none; }
+    .status { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; font-size: 13px; color: #b6a9a6; text-align: center; pointer-events: none; }
+    .logout { position: fixed; z-index: 1; top: max(20px, env(safe-area-inset-top)); right: max(20px, env(safe-area-inset-right)); }
+    .logout button { width: 44px; height: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; }
+    .logout button::after { display: none; }
+    .logout button svg { color: var(--ink); transform: none; }
+    .logout button:hover svg { color: var(--accent); }
+    button:disabled { opacity: .5; cursor: wait; }
   </style>
+  <script type="importmap">${IMPORT_MAP}</script>
+  <script type="module" src="/access.js"></script>
 </head>
 <body>
-  <main>
+  <main id="login">
     <svg class="mark" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M32 34C25 30 20 23 23 17C25 12 29 11 32 14C36 10 42 12 43 17C45 24 39 30 32 34Z"/>
       <path d="M32 34C25 30 20 23 23 17C25 12 29 11 32 14C36 10 42 12 43 17C45 24 39 30 32 34Z" transform="rotate(72 32 34)"/>
@@ -46,16 +60,24 @@ export function loginPage(error = false) {
         <circle cx="45" cy="12" r="1.3"/>
       </g>
     </svg>
-    <form method="post" action="/login">
+    <form id="login-form" method="post" action="/login">
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" autocapitalize="none" spellcheck="false" maxlength="256" required${error ? ' autofocus aria-invalid="true" aria-describedby="error"' : ''}>
-      ${error ? '<p class="error" id="error" role="alert">La password non è corretta. Riprova.</p>' : ''}
+      <p class="error" id="error" role="alert"${error ? '' : ' hidden'}>${error ? 'La password non è corretta. Riprova.' : ''}</p>
       <button type="submit">
         <span>Entra</span>
         <svg width="20" height="16" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h15M12 3l5 5-5 5"/></svg>
       </button>
     </form>
+    <noscript><p class="error">Abilita JavaScript per accedere al fiore.</p></noscript>
   </main>
+  <div id="experience" hidden>
+    <form class="logout" id="logout-form" method="post" action="/logout">
+      <button type="submit" aria-label="Esci e torna all’accesso"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 10H4M9 5l-5 5 5 5"/></svg></button>
+    </form>
+    <div id="stage"></div>
+    <div class="status" id="status" role="status">caricamento…</div>
+  </div>
 </body>
 </html>`;
 }

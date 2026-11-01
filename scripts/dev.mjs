@@ -5,6 +5,7 @@ import { authenticate } from '../server/auth.js';
 const files = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
+  ['/access.js', ['access.js', 'text/javascript; charset=utf-8']],
   ['/hibiscus.js', ['hibiscus.js', 'text/javascript; charset=utf-8']],
   ['/assets/ibisco.jpg', ['assets/ibisco.jpg', 'image/jpeg']],
 ]);
